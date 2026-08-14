@@ -5237,6 +5237,23 @@ async function synchronize(reason='manual'){
     }
     const remote=remoteRow.payload||{};
     const base=meta.baseSnapshot||null;
+
+    // Première synchronisation sur un nouvel appareil : si Supabase contient déjà
+    // des données, elles deviennent la référence initiale. Cela évite qu'un
+    // localStorage vide ou ancien (cas typique d'un nouvel iPad/Safari) ne
+    // prenne le dessus sur le journal déjà synchronisé dans le cloud.
+    const remoteHasData=Object.keys(remote.localStorage||{}).length>0||Array.isArray(remote.students)&&remote.students.length>0;
+    if(!base&&remoteHasData){
+      await applySnapshot(remote);
+      const pulled=await makeSnapshot();
+      const pulledHash=await hashSnapshot(pulled);
+      writeMeta({lastSyncedHash:pulledHash,baseSnapshot:pulled,lastSyncAt:new Date().toISOString()});
+      lastLocalHash=pulledHash;
+      setSyncStatus('Données récupérées — rechargement…','ok');
+      setTimeout(()=>window.location.reload(),120);
+      return;
+    }
+
     const merged={...remote,format:SYNC_FORMAT,schema:1,localStorage:mergeLocalStorage(local.localStorage||{},remote.localStorage||{},base?.localStorage||{}),students:mergeStudents(local.students||[],remote.students||[],base?.students||[]),createdAt:new Date().toISOString()};
     const mergedHash=await hashSnapshot(merged);
     const remoteHash=await hashSnapshot(remote);
