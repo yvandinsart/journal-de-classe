@@ -381,7 +381,7 @@
 .horaire-settings label{font-size:12px;font-weight:700;color:#66736e}.horaire-settings input{width:100%;margin-top:5px;border:1px solid #bcc9c3;border-radius:8px;padding:8px;font:inherit}
 .horaire-table-wrap{overflow:auto;background:#fff;border:1px solid #bcc9c3;border-radius:12px;padding:10px}.horaire-table{width:100%;min-width:900px;border-collapse:collapse;table-layout:fixed}
 .horaire-table th,.horaire-table td{border:1px solid #555;text-align:center;vertical-align:middle}.horaire-table th{background:#f0f3f2;padding:8px 4px}.horaire-table th:first-child{width:120px}.horaire-table td:first-child{font-weight:700;background:#fafafa;padding:8px}
-.horaire-cell{height:100px;padding:4px}.horaire-cell select{width:100%;min-height:42px;border:0;background:transparent;text-align:center;font:600 13px Arial;padding:4px;color:#26332e}.horaire-cell select+select{border-top:1px dashed #bcc9c3;margin-top:3px;padding-top:6px}
+.horaire-cell{height:100px;padding:4px}.horaire-cell select{width:100%;min-height:42px;border:0;background:transparent;text-align:center;font:600 13px Arial;padding:4px;color:#26332e}.horaire-cell select+select{border-top:1px dashed #bcc9c3;margin-top:3px;padding-top:6px}.horaire-secondary{font-weight:500!important;background:#f8faf9!important}.journal-secondary-label{margin-top:6px;padding-top:6px;border-top:1px dashed #c7d3da}
 .horaire-note{font-size:12px;color:#66736e;margin:8px 0 0}.horaire-close{border:1px solid #9aa9a3;background:#fff;border-radius:10px;padding:9px 12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;white-space:nowrap;visibility:visible!important;opacity:1!important}
 @media(max-width:760px){.horaire-overlay{padding:0}.horaire-panel{border-radius:0;min-height:100vh}.horaire-head{padding:10px;gap:8px}.horaire-head h2{min-width:0;flex:1 1 auto;font-size:20px}.horaire-close{font-size:12px;padding:8px 9px;max-width:48vw;white-space:normal;text-align:center}.horaire-settings{grid-template-columns:1fr}.horaire-body{padding:10px}}
 .horaire-print-sheet{display:none}
@@ -729,6 +729,7 @@ function normalizeGradeData(raw={}){
   const activity=raw.activity||raw.activite||'';
   return{
     subject:raw.subject||raw.matiere||'',
+    secondarySubject:raw.secondarySubject||raw.matiereSecondaire||'',
     activity,
     activityCode:
       raw.activityCode||
@@ -1716,6 +1717,7 @@ function collect(){
 
       d.periodes[period][grade]={
         subject:subject?subject.value:'',
+        secondarySubject:getValue('secondarySubject'),
         activity:activity?activity.value:'',
         activityCode:selected
           ?(selected.dataset.code||extractActivityCode(activity.value))
@@ -1753,6 +1755,17 @@ function apply(d){
       :(g==='5'?grade5:grade6);
 
     el.value=savedGrade.subject||'';
+  });
+
+  $$('[data-p][data-k="secondarySubject"]').forEach(el=>{
+    const p=el.dataset.p;
+    const g=el.dataset.g;
+    const active=!!common[p];
+    const grade5=(periods[p]&&periods[p][5])||{};
+    const grade6=(periods[p]&&periods[p][6])||{};
+    const savedGrade=active?(Object.values(grade5).some(Boolean)?grade5:grade6):(g==='5'?grade5:grade6);
+    el.value=savedGrade.secondarySubject||'';
+    updateJournalSecondaryVisibility(el);
   });
 
   // En période commune, aligner d'abord les deux matières.
@@ -1899,6 +1912,26 @@ if(window.jdcSupabaseSync) window.jdcSupabaseSync.pushSoon();
   }
 }
 
+function journalSecondaryChoices(subject){
+  if(subject==='Fourche')return ['Cours de philosophie et citoyenneté','Éducation physique','Natation','Seconde langue'];
+  if(subject==='Aide pédagogique')return ['Cours philosophiques','Éducation physique','Cours de philosophie et citoyenneté','Natation','Seconde langue'];
+  return [];
+}
+function updateJournalSecondaryVisibility(el){
+  if(!el)return;const subject=subjectSelect(el.dataset.p,el.dataset.g)?.value||'';const choices=journalSecondaryChoices(subject);const label=el.closest('label');
+  if(!choices.length){el.value='';if(label)label.style.display='none';return;}
+  const current=el.value;el.innerHTML='<option value="">Choisir l’activité simultanée…</option>'+choices.map(v=>'<option value="'+v+'">'+v+'</option>').join('');if(choices.includes(current))el.value=current;if(label)label.style.display='block';
+}
+function installJournalSecondarySubjects(){
+  $$('[data-p][data-k="subject"]').forEach(sel=>{
+    ['Cours de philosophie et citoyenneté','Aide pédagogique'].forEach(v=>{if(!Array.from(sel.options).some(o=>o.value===v)){const o=document.createElement('option');o.value=v;o.textContent=v;sel.appendChild(o);}});
+    const label=sel.closest('label');if(!label)return;let secondary=label.parentElement.querySelector('[data-p="'+sel.dataset.p+'"][data-g="'+sel.dataset.g+'"][data-k="secondarySubject"]');
+    if(!secondary){const l=document.createElement('label');l.className='journal-secondary-label';l.textContent='Activité simultanée des élèves';secondary=document.createElement('select');secondary.dataset.p=sel.dataset.p;secondary.dataset.g=sel.dataset.g;secondary.dataset.k='secondarySubject';l.appendChild(secondary);label.insertAdjacentElement('afterend',l);}
+    sel.addEventListener('change',()=>updateJournalSecondaryVisibility(secondary));updateJournalSecondaryVisibility(secondary);
+  });
+}
+installJournalSecondarySubjects();
+
 const SCHEDULE_KEY='horaireV1';
 
 const SCHEDULE_SUBJECT_MAP={
@@ -1917,11 +1950,11 @@ const SCHEDULE_SUBJECT_MAP={
   'Histoire':'Histoire', 'Géographie':'Géographie', 'Sciences':'Sciences', 'Divers':'Divers',
   'Education physique':'Éducation physique', 'Natation':'Éducation physique',
   'Citoyenneté':'Cours philosophiques', 'Cours philosophiques':'Cours philosophiques',
-  'Cours de philosophie et de citoyenneté':'Cours philosophiques', 'Seconde langue':'Seconde langue',
+  'Cours de philosophie et citoyenneté':'Cours de philosophie et citoyenneté', 'Cours de philosophie et de citoyenneté':'Cours de philosophie et citoyenneté', 'Seconde langue':'Seconde langue',
   'Formation économique et sociale':'Formation économique et sociale',
   'Formation manuelle - technique et technologique - numérique':'FMTTN',
   'Education culturelle et artistique':'ECA', 'EVRAS':'Divers',
-  'Aide pédagogique':'Divers', 'Sortie pédagogique':'Divers'
+  'Aide pédagogique':'Aide pédagogique', 'Sortie pédagogique':'Divers'
 };
 
 function parseISODateLocal(iso){
@@ -1953,8 +1986,10 @@ function scheduleWeekForDate(iso,schedule){
 function scheduleSubjectValue(schedule,weekKey,row,col,gradeIndex){
   const weekData=(schedule&&schedule[weekKey])||{};
   const base=row+'-'+col;
-  return weekData[base+'-'+gradeIndex]||(gradeIndex===1?weekData[base]:'')||'';
+  return weekData[base]||weekData[base+'-1']||weekData[base+'-2']||'';
 }
+function scheduleSecondaryValue(schedule,weekKey,row,col){const weekData=(schedule&&schedule[weekKey])||{};return weekData[row+'-'+col+'-secondary']||'';}
+
 function journalSubjectFromSchedule(value){
   return SCHEDULE_SUBJECT_MAP[String(value||'').trim()]||'';
 }
@@ -1970,13 +2005,12 @@ function scheduledEmptyDay(iso){
   const weekKey=scheduleWeekForDate(iso,schedule);
   for(let row=0;row<6;row++){
     const p=String(row+1);
-    const raw5=scheduleSubjectValue(schedule,weekKey,row,col,1);
-    const raw6=scheduleSubjectValue(schedule,weekKey,row,col,2)||raw5;
-    const subject5=journalSubjectFromSchedule(raw5);
-    const subject6=journalSubjectFromSchedule(raw6);
-    if(!subject5&&!subject6)continue;
-    day.periodes[p]={5:normalizeGradeData({subject:subject5}),6:normalizeGradeData({subject:subject6})};
-    day.fusion[p]=!!(subject5&&subject6&&subject5===subject6);
+    const raw=scheduleSubjectValue(schedule,weekKey,row,col,1);
+    const subject=journalSubjectFromSchedule(raw);
+    const secondary=scheduleSecondaryValue(schedule,weekKey,row,col);
+    if(!subject)continue;
+    day.periodes[p]={5:normalizeGradeData({subject,secondarySubject:secondary}),6:normalizeGradeData({subject,secondarySubject:secondary})};
+    day.fusion[p]=true;
   }
   return day;
 }
@@ -2284,10 +2318,15 @@ function buildGradeSummary(period,grade,root=document){
 
   const activity=activityDetails(period,grade,root);
 
+  const subject=fieldValue(period,grade,'subject',root).trim();
+  const secondarySubject=fieldValue(period,grade,'secondarySubject',root).trim();
+  const subjectForExport=(secondarySubject&&(subject==='Fourche'||subject==='Aide pédagogique'))
+    ? subject+' — '+secondarySubject
+    : subject;
   appendExportLine(
     summary,
     'Matière',
-    fieldValue(period,grade,'subject',root)
+    subjectForExport
   );
   appendExportLine(summary,'Code',activity.code);
   appendExportLine(
@@ -2917,14 +2956,48 @@ if(wordButton){
 $('#archives').addEventListener('click',e=>{e.preventDefault();openArchives();});
 const scheduleOpen=$('#scheduleOpen');
 
-const HORAIRE_SUBJECTS = ['Français-Lire','Français-Ecrire','Français-Ecouter','Français- Parler','Orthographe','Grammaire','Conjugaison',"De l'organisation des données à la statistique","De l'arithmétique à l'algèbre",'Des grandeurs à la relation entre variables',"Des objets de l'espace à la géométrie",'Histoire','Géographie','Sciences','Divers','Education physique','Natation','Citoyenneté','Cours philosophiques','Seconde langue','Formation économique et sociale','Formation manuelle - technique et technologique - numérique','Education culturelle et artistique','EVRAS','Cours de philosophie et de citoyenneté','Aide pédagogique','Sortie pédagogique','Fourche'];
+const HORAIRE_SUBJECTS = ['Français-Lire','Français-Ecrire','Français-Ecouter','Français- Parler','Orthographe','Grammaire','Conjugaison',"De l'organisation des données à la statistique","De l'arithmétique à l'algèbre",'Des grandeurs à la relation entre variables',"Des objets de l'espace à la géométrie",'Histoire','Géographie','Sciences','Divers','Education physique','Natation','Citoyenneté','Cours philosophiques','Seconde langue','Formation économique et sociale','Formation manuelle - technique et technologique - numérique','Education culturelle et artistique','EVRAS','Cours de philosophie et citoyenneté','Aide pédagogique','Sortie pédagogique','Fourche'];
+const HORAIRE_SECONDARY={
+  'Fourche':['Cours de philosophie et citoyenneté','Education physique','Natation','Seconde langue'],
+  'Aide pédagogique':['Cours philosophiques','Education physique','Cours de philosophie et citoyenneté','Natation','Seconde langue']
+};
 const HORAIRE_TIMES=['8h45-9h35','9h35-10h25','10h40-11h30','11h25-12h20','13h30-14h20','14h20-15h10'];
 let horaireWeek='A';
 function horaireMondayISO(date){const d=new Date(date.getFullYear(),date.getMonth(),date.getDate(),12);const day=d.getDay();d.setDate(d.getDate()+(day===0?-6:1-day));return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
-function readHoraireState(){let st=readLocalJSON(SCHEDULE_KEY,null);if(!st||typeof st!=='object')st={meta:{},A:{},B:{}};st.meta=st.meta||{};st.A=st.A||{};st.B=st.B||{};if(!st.meta.referenceMonday)st.meta.referenceMonday=horaireMondayISO(new Date());return st;}
+function migrateHoraireWeek(week){
+  if(!week||typeof week!=='object')return {};
+  const out={...week};
+  HORAIRE_TIMES.forEach((_,row)=>{for(let col=0;col<5;col++){
+    const base=row+'-'+col;
+    if(out[base]===undefined){
+      const a=out[base+'-1']||'',b=out[base+'-2']||'';
+      if(a&&b&&a===b)out[base]=a;
+      else if(a&&(a==='Fourche'||a==='Aide pédagogique')&&b){out[base]=a;out[base+'-secondary']=b;}
+      else if(a&&!b)out[base]=a;
+      else if(!a&&b)out[base]=b;
+      else if(a&&b){out[base]=a;out[base+'-legacySecond']=b;}
+    }
+  }});
+  return out;
+}
+function readHoraireState(){let st=readLocalJSON(SCHEDULE_KEY,null);if(!st||typeof st!=='object')st={meta:{},A:{},B:{}};st.meta=st.meta||{};st.A=migrateHoraireWeek(st.A||{});st.B=migrateHoraireWeek(st.B||{});if(!st.meta.referenceMonday)st.meta.referenceMonday=horaireMondayISO(new Date());return st;}
 function saveHoraireState(st){localStorage.setItem(SCHEDULE_KEY,JSON.stringify(st));}
 function horaireOptionHTML(){return '<option value="">Choisissez une matière…</option>'+HORAIRE_SUBJECTS.map(v=>'<option value="'+String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')+'">'+v.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</option>').join('');}
-function renderHoraireEmbedded(){const st=readHoraireState();saveHoraireState(st);const body=document.getElementById('horaireTbody');if(!body)return;document.getElementById('horaireTabA').classList.toggle('active',horaireWeek==='A');document.getElementById('horaireTabB').classList.toggle('active',horaireWeek==='B');document.getElementById('horaireReferenceMonday').value=st.meta.referenceMonday||'';document.getElementById('horaireTeacher').value=st.meta.teacher||'';document.getElementById('horaireClassName').value=st.meta.className||'';body.innerHTML='';HORAIRE_TIMES.forEach((time,row)=>{const tr=document.createElement('tr');const tdTime=document.createElement('td');tdTime.textContent=time;tr.appendChild(tdTime);for(let col=0;col<5;col++){const td=document.createElement('td');td.className='horaire-cell';[1,2].forEach(n=>{const sel=document.createElement('select');sel.innerHTML=horaireOptionHTML();const legacy=row+'-'+col;const storage=legacy+'-'+n;sel.value=st[horaireWeek][storage]||(n===1?(st[horaireWeek][legacy]||''):'');sel.title=n===1?'5e primaire':'6e primaire';sel.addEventListener('change',()=>{const now=readHoraireState();now[horaireWeek][storage]=sel.value;if(n===1&&now[horaireWeek][legacy])delete now[horaireWeek][legacy];saveHoraireState(now);});td.appendChild(sel);});tr.appendChild(td);}body.appendChild(tr);});}
+function horaireSecondaryOptionHTML(subject){return '<option value="">Choisissez l’activité simultanée…</option>'+((HORAIRE_SECONDARY[subject]||[]).map(v=>'<option value="'+String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')+'">'+v.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</option>').join(''));}
+function renderHoraireEmbedded(){
+  const st=readHoraireState();saveHoraireState(st);const body=document.getElementById('horaireTbody');if(!body)return;
+  document.getElementById('horaireTabA').classList.toggle('active',horaireWeek==='A');document.getElementById('horaireTabB').classList.toggle('active',horaireWeek==='B');document.getElementById('horaireReferenceMonday').value=st.meta.referenceMonday||'';document.getElementById('horaireTeacher').value=st.meta.teacher||'';document.getElementById('horaireClassName').value=st.meta.className||'';body.innerHTML='';
+  HORAIRE_TIMES.forEach((time,row)=>{const tr=document.createElement('tr');const tdTime=document.createElement('td');tdTime.textContent=time;tr.appendChild(tdTime);for(let col=0;col<5;col++){
+    const td=document.createElement('td');td.className='horaire-cell';const base=row+'-'+col;
+    const sel=document.createElement('select');sel.innerHTML=horaireOptionHTML();sel.value=st[horaireWeek][base]||'';sel.title='Matière commune P5-P6';td.appendChild(sel);
+    const secondary=document.createElement('select');secondary.className='horaire-secondary';
+    const refreshSecondary=()=>{const subject=sel.value,choices=HORAIRE_SECONDARY[subject]||[];secondary.style.display=choices.length?'':'none';secondary.innerHTML=horaireSecondaryOptionHTML(subject);const now=readHoraireState();secondary.value=choices.includes(now[horaireWeek][base+'-secondary'])?now[horaireWeek][base+'-secondary']:'';};
+    sel.addEventListener('change',()=>{const now=readHoraireState();now[horaireWeek][base]=sel.value;delete now[horaireWeek][base+'-1'];delete now[horaireWeek][base+'-2'];delete now[horaireWeek][base+'-legacySecond'];if(!HORAIRE_SECONDARY[sel.value])delete now[horaireWeek][base+'-secondary'];saveHoraireState(now);refreshSecondary();});
+    secondary.addEventListener('change',()=>{const now=readHoraireState();now[horaireWeek][base+'-secondary']=secondary.value;saveHoraireState(now);});td.appendChild(secondary);refreshSecondary();
+    const legacySecond=st[horaireWeek][base+'-legacySecond'];if(legacySecond){const note=document.createElement('div');note.className='horaire-note';note.textContent='Ancienne donnée conservée : '+legacySecond;td.appendChild(note);}
+    tr.appendChild(td);
+  }body.appendChild(tr);});
+}
 function openHoraireEmbedded(){document.getElementById('horaireOverlay').classList.add('open');renderHoraireEmbedded();}
 function closeHoraireEmbedded(){document.getElementById('horaireOverlay').classList.remove('open');}
 const horaireOverlay=document.getElementById('horaireOverlay');
@@ -2937,7 +3010,25 @@ document.getElementById('horaireCopy')?.addEventListener('click',()=>{if(!confir
 document.getElementById('horaireReset')?.addEventListener('click',()=>{if(!confirm('Effacer toutes les matières des semaines A et B ?'))return;const st=readHoraireState();st.A={};st.B={};saveHoraireState(st);renderHoraireEmbedded();});
 document.getElementById('horaireExport')?.addEventListener('click',()=>{const st=readHoraireState();const blob=new Blob([JSON.stringify(st,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='horaire-sauvegarde.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),0);});
 function escapeHorairePrint(value){return String(value||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-function buildHorairePrintSheet(){const st=readHoraireState();const week=st[horaireWeek]||{};const days=['Lundi','Mardi','Mercredi','Jeudi','Vendredi'];let rows='';HORAIRE_TIMES.forEach((time,row)=>{let cells='<td>'+escapeHorairePrint(time)+'</td>';for(let col=0;col<5;col++){const legacy=row+'-'+col;const first=week[legacy+'-1']||week[legacy]||'';const second=week[legacy+'-2']||'';let content='';if(first&&second&&second!==first){content='<span class="horaire-print-grade"><strong>5e :</strong> '+escapeHorairePrint(first)+'</span><span class="horaire-print-grade"><strong>6e :</strong> '+escapeHorairePrint(second)+'</span>';}else{const subject=first||second||'';content=subject?'<span class="horaire-print-grade">'+escapeHorairePrint(subject)+'</span>':'';}cells+='<td>'+content+'</td>';}rows+='<tr>'+cells+'</tr>';});const teacher=st.meta&&st.meta.teacher?st.meta.teacher:'';const className=st.meta&&st.meta.className?st.meta.className:'';const sheet=document.getElementById('horairePrintSheet');if(!sheet)return;let meta='';if(teacher)meta+='<span>Enseignant : '+escapeHorairePrint(teacher)+'</span>';if(className)meta+='<span>Classe : '+escapeHorairePrint(className)+'</span>';meta+='<span>Semaine '+escapeHorairePrint(horaireWeek)+'</span>';sheet.innerHTML='<h1>Horaire matières</h1><div class="horaire-print-meta">'+meta+'</div><table><thead><tr><th>Heures / Jours</th>'+days.map(d=>'<th>'+d+'</th>').join('')+'</tr></thead><tbody>'+rows+'</tbody></table>'; }
+function horaireCellData(week,row,col){
+  const base=row+'-'+col;
+  const subject=week[base]||week[base+'-1']||week[base+'-2']||'';
+  let secondary=week[base+'-secondary']||'';
+  // Compatibilité prudente avec d'anciennes données : une seconde matière différente
+  // n'est utilisée comme activité simultanée que pour Fourche/Aide pédagogique.
+  if(!secondary&&(subject==='Fourche'||subject==='Aide pédagogique')){
+    const legacySecond=week[base+'-legacySecond']||week[base+'-2']||'';
+    if(legacySecond&&legacySecond!==subject)secondary=legacySecond;
+  }
+  return {subject,secondarySubject:secondary};
+}
+function horaireCellLabel(data){
+  const subject=String(data&&data.subject||'').trim();
+  const secondary=String(data&&data.secondarySubject||'').trim();
+  if(!subject)return '';
+  return secondary?subject+' — '+secondary:subject;
+}
+function buildHorairePrintSheet(){const st=readHoraireState();const week=st[horaireWeek]||{};const days=['Lundi','Mardi','Mercredi','Jeudi','Vendredi'];let rows='';HORAIRE_TIMES.forEach((time,row)=>{let cells='<td>'+escapeHorairePrint(time)+'</td>';for(let col=0;col<5;col++){const data=horaireCellData(week,row,col);const label=horaireCellLabel(data);const content=label?'<span class="horaire-print-grade">'+escapeHorairePrint(label)+'</span>':'';cells+='<td>'+content+'</td>';}rows+='<tr>'+cells+'</tr>';});const teacher=st.meta&&st.meta.teacher?st.meta.teacher:'';const className=st.meta&&st.meta.className?st.meta.className:'';const sheet=document.getElementById('horairePrintSheet');if(!sheet)return;let meta='';if(teacher)meta+='<span>Enseignant : '+escapeHorairePrint(teacher)+'</span>';if(className)meta+='<span>Classe : '+escapeHorairePrint(className)+'</span>';meta+='<span>Semaine '+escapeHorairePrint(horaireWeek)+'</span>';sheet.innerHTML='<h1>Horaire matières</h1><div class="horaire-print-meta">'+meta+'</div><table><thead><tr><th>Heures / Jours</th>'+days.map(d=>'<th>'+d+'</th>').join('')+'</tr></thead><tbody>'+rows+'</tbody></table>'; }
 function printHoraireEmbedded(){
   const printWindow=window.open('','_blank');
   if(!printWindow){alert('La fenêtre d’impression a été bloquée. Autorise les fenêtres contextuelles puis réessaie.');return;}
@@ -2948,16 +3039,8 @@ function printHoraireEmbedded(){
   HORAIRE_TIMES.forEach((time,row)=>{
     let cells='<td>'+escapeHorairePrint(time)+'</td>';
     for(let col=0;col<5;col++){
-      const legacy=row+'-'+col;
-      const first=week[legacy+'-1']||week[legacy]||'';
-      const second=week[legacy+'-2']||'';
-      let content='';
-      if(first&&second&&second!==first){
-        content='<span class="grade"><strong>5e :</strong> '+escapeHorairePrint(first)+'</span><span class="grade"><strong>6e :</strong> '+escapeHorairePrint(second)+'</span>';
-      }else{
-        const subject=first||second||'';
-        content=subject?'<span class="grade">'+escapeHorairePrint(subject)+'</span>':'';
-      }
+      const data=horaireCellData(week,row,col);
+      const content=horaireCellLabel(data)?'<span class="grade">'+escapeHorairePrint(horaireCellLabel(data))+'</span>':'';
       cells+='<td>'+content+'</td>';
     }
     rows+='<tr>'+cells+'</tr>';
@@ -2997,8 +3080,8 @@ function buildHorairePdfBlob(){
   HORAIRE_TIMES.forEach((tm,row)=>{
     const yTop=tableTop-rowH*(row+1),cy=yTop-24;text(margin+8,cy,9,tm,true);
     for(let col=0;col<5;col++){
-      const legacy=row+'-'+col,first=week[legacy+'-1']||week[legacy]||'',second=week[legacy+'-2']||'',x=margin+timeW+col*colW+5;
-      if(first&&second&&second!==first){text(x,cy+8,8,'5e : '+first,true);text(x,cy-10,8,'6e : '+second,true);}else{const subject=first||second||'';if(subject)text(x,cy,8,subject,true);}
+      const data=horaireCellData(week,row,col),x=margin+timeW+col*colW+5,label=horaireCellLabel(data);
+      if(label)text(x,cy,8,label,true);
     }
   });
   const stream=cmds.join('\n');
@@ -5237,6 +5320,23 @@ async function synchronize(reason='manual'){
     }
     const remote=remoteRow.payload||{};
     const base=meta.baseSnapshot||null;
+
+    // Première synchronisation sur un nouvel appareil : si Supabase contient déjà
+    // des données, elles deviennent la référence initiale. Cela évite qu'un
+    // localStorage vide ou ancien (cas typique d'un nouvel iPad/Safari) ne
+    // prenne le dessus sur le journal déjà synchronisé dans le cloud.
+    const remoteHasData=Object.keys(remote.localStorage||{}).length>0||Array.isArray(remote.students)&&remote.students.length>0;
+    if(!base&&remoteHasData){
+      await applySnapshot(remote);
+      const pulled=await makeSnapshot();
+      const pulledHash=await hashSnapshot(pulled);
+      writeMeta({lastSyncedHash:pulledHash,baseSnapshot:pulled,lastSyncAt:new Date().toISOString()});
+      lastLocalHash=pulledHash;
+      setSyncStatus('Données récupérées — rechargement…','ok');
+      setTimeout(()=>window.location.reload(),120);
+      return;
+    }
+
     const merged={...remote,format:SYNC_FORMAT,schema:1,localStorage:mergeLocalStorage(local.localStorage||{},remote.localStorage||{},base?.localStorage||{}),students:mergeStudents(local.students||[],remote.students||[],base?.students||[]),createdAt:new Date().toISOString()};
     const mergedHash=await hashSnapshot(merged);
     const remoteHash=await hashSnapshot(remote);
