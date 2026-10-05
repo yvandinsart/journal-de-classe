@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Connexion V2 — Journal de classe</title>
+<style>
+body{margin:0;font-family:Arial,sans-serif;background:#edf2f5;color:#17242d}.wrap{max-width:600px;margin:5vh auto;padding:18px}.card{background:#fff;border-radius:14px;box-shadow:0 5px 24px #0002;padding:24px}h1{margin:0 0 8px;color:#245b78;font-size:25px}p{line-height:1.45}label{display:block;font-weight:700;margin:16px 0 6px}input{width:100%;box-sizing:border-box;border:1px solid #aebdc6;border-radius:8px;padding:12px;font:inherit}.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}button,a.btn{border:0;border-radius:8px;padding:11px 14px;background:#245b78;color:#fff;font:inherit;font-weight:700;cursor:pointer;text-decoration:none}.alt{background:#dce8ee!important;color:#173f55!important}.msg{margin-top:16px;padding:12px;border-radius:8px;background:#eef4f7}.ok{background:#e4f4e8;color:#27643c}.err{background:#ffe0e0;color:#8a2f2f}.hidden{display:none}small{display:block;color:#536771;line-height:1.4;margin-top:7px}.sep{height:1px;background:#d7e0e5;margin:22px 0 8px}</style>
+</head>
+<body>
+<div class="wrap"><div class="card">
+<h1>Journal de classe</h1>
+<p>Connexion simplifiée au même compte Supabase que le journal.</p>
+<div id="normalBox">
+<label for="email">Adresse e-mail du compte</label>
+<input id="email" type="email" autocomplete="username" placeholder="votre adresse e-mail">
+<label for="currentPassword">Mot de passe actuel</label>
+<input id="currentPassword" type="password" autocomplete="current-password" placeholder="Votre mot de passe actuel">
+<div class="actions"><button id="passwordLoginBtn" type="button">Se connecter avec le mot de passe</button></div>
+<small>Cette méthode n’envoie aucun e-mail.</small>
+<div class="sep"></div>
+<div class="actions"><button id="magicBtn" type="button">Recevoir un lien de connexion</button><button id="resetBtn" type="button" class="alt">Réinitialiser le mot de passe</button></div>
+<small>Ces deux boutons envoient un e-mail et peuvent être temporairement bloqués par Supabase.</small>
+</div>
+<div id="passwordBox" class="hidden">
+<p><strong>Choisissez maintenant un nouveau mot de passe.</strong></p>
+<label for="newPassword">Nouveau mot de passe</label>
+<input id="newPassword" type="password" autocomplete="new-password" minlength="8">
+<div class="actions"><button id="savePassword" type="button">Enregistrer le nouveau mot de passe</button></div>
+</div>
+<div id="msg" class="msg hidden"></div>
+<div class="actions"><a class="btn alt" href="./index.html">Retour au journal</a></div>
+</div></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3"></script>
+<script>
+(async()=>{
+'use strict';
+const SUPABASE_URL='https://icsvglqehidsdescpyuj.supabase.co';
+const SUPABASE_KEY='sb_publishable_xRhnaJgYNJvBrktrb0WQSw_Cnv7MmL6';
+const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+const email=document.getElementById('email'), currentPassword=document.getElementById('currentPassword'), msg=document.getElementById('msg'), normalBox=document.getElementById('normalBox'), passwordBox=document.getElementById('passwordBox');
+function show(text,kind=''){msg.textContent=text;msg.className='msg '+kind;}
+function cleanError(e){const t=(e&&e.message)||String(e||'Erreur inconnue');if(/email rate limit exceeded|rate limit.*email/i.test(t))return 'Trop d’e-mails ont été demandés récemment. Vous pouvez toutefois essayer la connexion avec le mot de passe.';if(/invalid login credentials/i.test(t))return 'Adresse e-mail ou mot de passe non reconnu.';if(/user not found|email.*not found/i.test(t))return 'Aucun compte n’est associé à cette adresse e-mail.';return t;}
+const redirect=location.origin+location.pathname;
+document.getElementById('passwordLoginBtn').onclick=async()=>{const value=email.value.trim(), password=currentPassword.value;if(!value){show('Indiquez votre adresse e-mail.','err');return;}if(!password){show('Indiquez votre mot de passe actuel.','err');return;}show('Connexion en cours…');const {error}=await sb.auth.signInWithPassword({email:value,password});if(error)show(cleanError(error),'err');else show('Connexion réussie. Vous pouvez revenir au journal.','ok');};
+document.getElementById('magicBtn').onclick=async()=>{const value=email.value.trim();if(!value){show('Indiquez votre adresse e-mail.','err');return;}show('Envoi du lien…');const {error}=await sb.auth.signInWithOtp({email:value,options:{emailRedirectTo:redirect,shouldCreateUser:false}});if(error)show(cleanError(error),'err');else show('Lien envoyé. Ouvrez le message reçu et cliquez sur le lien de connexion.','ok');};
+document.getElementById('resetBtn').onclick=async()=>{const value=email.value.trim();if(!value){show('Indiquez votre adresse e-mail.','err');return;}show('Envoi du message de réinitialisation…');const {error}=await sb.auth.resetPasswordForEmail(value,{redirectTo:redirect});if(error)show(cleanError(error),'err');else show('Message envoyé. Ouvrez l’e-mail reçu puis cliquez sur le lien pour choisir un nouveau mot de passe.','ok');};
+document.getElementById('savePassword').onclick=async()=>{const p=document.getElementById('newPassword').value;if(p.length<8){show('Le mot de passe doit contenir au moins 8 caractères.','err');return;}const {error}=await sb.auth.updateUser({password:p});if(error)show(cleanError(error),'err');else{show('Nouveau mot de passe enregistré. Vous pouvez revenir au journal.','ok');passwordBox.classList.add('hidden');}};
+sb.auth.onAuthStateChange((event,session)=>{if(event==='PASSWORD_RECOVERY'){normalBox.classList.add('hidden');passwordBox.classList.remove('hidden');show('Le lien de récupération est valide. Choisissez votre nouveau mot de passe.','ok');}else if((event==='SIGNED_IN'||event==='INITIAL_SESSION')&&session?.user){show('Connexion active. Vous pouvez revenir au journal.','ok');}});
+const {data}=await sb.auth.getSession();if(data?.session?.user)show('Connexion active. Vous pouvez revenir au journal.','ok');
+})();
+</script>
+</body>
+</html>
