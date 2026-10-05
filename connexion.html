@@ -5,21 +5,30 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Connexion — Journal de classe</title>
 <style>
-body{margin:0;font-family:Arial,sans-serif;background:#edf2f5;color:#17242d}.wrap{max-width:560px;margin:7vh auto;padding:18px}.card{background:#fff;border-radius:14px;box-shadow:0 5px 24px #0002;padding:24px}h1{margin:0 0 8px;color:#245b78;font-size:25px}p{line-height:1.45}label{display:block;font-weight:700;margin:16px 0 6px}input{width:100%;box-sizing:border-box;border:1px solid #aebdc6;border-radius:8px;padding:12px;font:inherit}.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}button,a.btn{border:0;border-radius:8px;padding:11px 14px;background:#245b78;color:#fff;font:inherit;font-weight:700;cursor:pointer;text-decoration:none}.alt{background:#dce8ee!important;color:#173f55!important}.msg{margin-top:16px;padding:12px;border-radius:8px;background:#eef4f7}.ok{background:#e4f4e8;color:#27643c}.err{background:#ffe0e0;color:#8a2f2f}.hidden{display:none}small{color:#536771}</style>
+body{margin:0;font-family:Arial,sans-serif;background:#edf2f5;color:#17242d}.wrap{max-width:600px;margin:5vh auto;padding:18px}.card{background:#fff;border-radius:14px;box-shadow:0 5px 24px #0002;padding:24px}h1{margin:0 0 8px;color:#245b78;font-size:25px}p{line-height:1.45}label{display:block;font-weight:700;margin:16px 0 6px}input{width:100%;box-sizing:border-box;border:1px solid #aebdc6;border-radius:8px;padding:12px;font:inherit}.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}button,a.btn{border:0;border-radius:8px;padding:11px 14px;background:#245b78;color:#fff;font:inherit;font-weight:700;cursor:pointer;text-decoration:none}.alt{background:#dce8ee!important;color:#173f55!important}.msg{margin-top:16px;padding:12px;border-radius:8px;background:#eef4f7}.ok{background:#e4f4e8;color:#27643c}.err{background:#ffe0e0;color:#8a2f2f}.hidden{display:none}small{display:block;color:#536771;line-height:1.4;margin-top:7px}.sep{height:1px;background:#d7e0e5;margin:22px 0 8px}.notice{background:#fff4cc;color:#6a5311;padding:11px;border-radius:8px;margin-top:14px}</style>
 </head>
 <body>
 <div class="wrap"><div class="card">
 <h1>Journal de classe</h1>
-<p>Connexion simplifiée. Cette page utilise le même compte Supabase que le journal et mémorise la session sur cet appareil.</p>
+<p>Connexion simplifiée au même compte Supabase que le journal.</p>
 
 <div id="normalBox">
 <label for="email">Adresse e-mail du compte</label>
 <input id="email" type="email" autocomplete="username" placeholder="votre adresse e-mail">
+
+<label for="currentPassword">Mot de passe actuel</label>
+<input id="currentPassword" type="password" autocomplete="current-password" placeholder="Si vous le connaissez encore">
+<div class="actions">
+<button id="passwordLoginBtn" type="button">Se connecter avec le mot de passe</button>
+</div>
+<small>Cette méthode n’envoie aucun e-mail. Si votre mot de passe actuel est encore valable, vous pouvez vous connecter immédiatement.</small>
+
+<div class="sep"></div>
 <div class="actions">
 <button id="magicBtn" type="button">Recevoir un lien de connexion</button>
 <button id="resetBtn" type="button" class="alt">Réinitialiser le mot de passe</button>
 </div>
-<small>Si le mot de passe actuel n'est plus reconnu, utilisez d'abord « Réinitialiser le mot de passe ».</small>
+<small>Ces deux boutons envoient un e-mail et peuvent être temporairement bloqués par la limite d’envoi de Supabase.</small>
 </div>
 
 <div id="passwordBox" class="hidden">
@@ -39,10 +48,25 @@ body{margin:0;font-family:Arial,sans-serif;background:#edf2f5;color:#17242d}.wra
 const SUPABASE_URL='https://icsvglqehidsdescpyuj.supabase.co';
 const SUPABASE_KEY='sb_publishable_xRhnaJgYNJvBrktrb0WQSw_Cnv7MmL6';
 const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
-const email=document.getElementById('email'), msg=document.getElementById('msg'), normalBox=document.getElementById('normalBox'), passwordBox=document.getElementById('passwordBox');
+const email=document.getElementById('email'), currentPassword=document.getElementById('currentPassword'), msg=document.getElementById('msg'), normalBox=document.getElementById('normalBox'), passwordBox=document.getElementById('passwordBox');
 function show(text,kind=''){msg.textContent=text;msg.className='msg '+kind;}
-function cleanError(e){const t=(e&&e.message)||String(e||'Erreur inconnue');if(/invalid login credentials/i.test(t))return 'Identifiants non reconnus. Utilisez « Réinitialiser le mot de passe ».';if(/user not found|email.*not found/i.test(t))return 'Aucun compte n’est associé à cette adresse e-mail.';return t;}
+function cleanError(e){
+ const t=(e&&e.message)||String(e||'Erreur inconnue');
+ if(/email rate limit exceeded|rate limit.*email/i.test(t))return 'Trop d’e-mails ont été demandés récemment. Supabase bloque temporairement les nouveaux envois. Vous pouvez toutefois essayer immédiatement la connexion avec votre mot de passe actuel ci-dessus.';
+ if(/invalid login credentials/i.test(t))return 'Adresse e-mail ou mot de passe non reconnu.';
+ if(/user not found|email.*not found/i.test(t))return 'Aucun compte n’est associé à cette adresse e-mail.';
+ return t;
+}
 const redirect=location.origin+location.pathname;
+
+document.getElementById('passwordLoginBtn').onclick=async()=>{
+ const value=email.value.trim(), password=currentPassword.value;
+ if(!value){show('Indiquez votre adresse e-mail.','err');return;}
+ if(!password){show('Indiquez votre mot de passe actuel.','err');return;}
+ show('Connexion en cours…');
+ const {error}=await sb.auth.signInWithPassword({email:value,password});
+ if(error)show(cleanError(error),'err');else show('Connexion réussie. Vous pouvez revenir au journal.','ok');
+};
 
 document.getElementById('magicBtn').onclick=async()=>{
  const value=email.value.trim(); if(!value){show('Indiquez votre adresse e-mail.','err');return;}
